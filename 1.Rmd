@@ -1,0 +1,73 @@
+---
+title: "Untitled"
+author: "fanglu"
+date: "June 11, 2016"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r, echo=TRUE}
+require(caret)
+require(kernlab)
+require(randomForest)
+require(ggplot2)
+require(stats)
+training.data<- read.csv("pml-training.csv",header = TRUE, na.strings = c("NA", " ", "#DIV/0!"))
+testing.data<- read.csv("pml-testing.csv",header = TRUE,na.strings = c("NA", " ", "#DIV/0!"))
+dim(training.data)
+dim(testing.data)
+table(training.data$new_window)
+table(testing.data$new_window)
+# Remove the varialbes with NA in the training data set
+training.data<-training.data[,!apply(is.na(training.data),2,any)]
+# Split the traing data into training and evaluation two parts based on the new_window [yes/no]
+evaluation.data<-training.data[training.data$new_window=="yes",]
+training.data<-training.data[training.data$new_window=="no",]
+# Remove the first 7 columns which are not used for model build
+training.data<-training.data[,-(1:7)]
+# The training data now reduced to contain 19216 obs of 53 variables (original containes 160 variables)
+
+# standardizing the trainging data
+## preObj<-preProcess(training.data[,-53],method=c("center","scale"))
+set.seed(1234)
+## modelFit<-train(classe~., data=training.data, preProcess=c("center","scale"), method ="glm")
+## table(training.data2$classe,training.data2$user_name)
+```
+
+Check correlated predictors
+```{r, echo=TRUE}
+M<-abs(cor(training.data[,-53]))
+diag(M)<-0
+which(M>0.8, arr.ind=T)
+# Remove the highly correlated predictors (r>0.8), resulting in 41 predictors plus classe
+cleanTrainData<-training.data[,-c(4,9,10,8,19,33,46,24,26,34,36)]
+
+# preprocessing with principal component analysis
+## prComp<-prcomp(cleanTrainData[,-42])
+preProc<-preProcess(cleanTrainData[,-42], method="pca",thresh = 0.99)
+trainPC<-predict(preProc,cleanTrainData[,-42])
+## pca_modelFit<-train(cleanTrainData$classe~.,method="glm",data=cleanTrainData)
+
+modelFit <- train(cleanTrainData$classe ~ ., method = "rf", data = trainPC)
+varImpPlot(modelFit$finalModel, sort = TRUE, type = 1, pch = 19, col = 1, cex = 1, main = "Importance of Each Principal Components")
+
+```
+
+cross-evaluation 
+```{r, echo=TRUE}
+evaluationPC <- predict(preProc, evaluation.data[, -60])
+evaluation.predict <- predict(modelFit, evaluationPC)
+evalutation.check <- confusionMatrix(evaluation.data$classe, evaluation.predict)
+evalutation.check$table
+postResample(evaluation.predict, evaluation.data$classe)
+```
+
+Prediction on the testing data
+```{r, echo=TRUE}
+testPC <- predict(preProc, testing.data[, -160])
+prediction.testdata<-predict(modelFit, testPC)
+prediction.testdata
+```
